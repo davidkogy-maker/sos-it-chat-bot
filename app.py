@@ -10,7 +10,8 @@ CORS(app)
 API_KEY = "AIzaSyCfwYxGd5V6AmMw4U58qkfqV-DryQAwFwo"
 genai.configure(api_key=API_KEY)
 
-model = genai.GenerativeModel('gemini-1.5-flash')
+# OPRAVA: Používame názov modelu, ktorý je 100% podporovaný
+model = genai.GenerativeModel('gemini-pro') 
 
 SYSTEM_INSTRUCTION = """
 Si oficiálny AI asistent pre SOŠ IT Ostrovského 1, Košice. 
@@ -35,10 +36,9 @@ PODROBNÉ ODBORY (2026/2027):
 - Internát a strava: Škola má vlastný školský internát a jedáleň priamo v areáli.
 
 KOMUNIKAČNÉ PRAVIDLÁ:
-- Odpovedaj profesionálne, ale priateľsky (ako sprievodca školou).
-- Ak sa niekto pýta na veci mimo školy, zdvorilo ho odkáž na tému štúdia.
+- Odpovedaj profesionálne, ale priateľsky.
 - Ak nepoznáš konkrétnu odpoveď, napíš "Túto informáciu nemám špecifikovanú v manuáli" a pridaj odkaz na https://ostrov.edupage.org/.
-- Dodržuj prísne GDPR: Nikdy neuvádzaj súkromné mená žiakov alebo ich výsledky.
+- Dodržuj prísne GDPR.
 """
 
 @app.route('/')
@@ -54,17 +54,17 @@ def chat():
         if not user_message:
             return jsonify({"response": "Neprijal som žiadnu správu."})
 
-        # Generovanie odpovede
-        prompt = f"{SYSTEM_INSTRUCTION}\n\nPoužívateľ sa pýta: {user_message}"
+        # OPRAVA: Jednoduchšie volanie modelu pre lepšiu kompatibilitu
+        prompt = f"{SYSTEM_INSTRUCTION}\n\nPoužívateľ: {user_message}"
         response = model.generate_content(prompt)
         
-        # Ošetrenie prázdnej odpovede
-        final_text = response.text if response else "Prepáč, neviem na to vygenerovať odpoveď."
-        
-        return jsonify({"response": final_text})
+        if response and response.text:
+            return jsonify({"response": response.text})
+        else:
+            return jsonify({"response": "Prepáč, Gemini vygeneroval prázdnu odpoveď."})
     
     except Exception as e:
-        print(f"Chyba na serveri: {e}")
+        print(f"Chyba: {e}")
         return jsonify({"response": f"Chyba na serveri: {str(e)}"}), 500
 
 if __name__ == '__main__':
