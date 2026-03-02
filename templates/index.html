@@ -3,74 +3,73 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Sprievodca | SOŠ IT Ostrovského</title>
+    <title>AI Asistent SOŠ IT</title>
     <style>
-        * { box-sizing: border-box; }
-        body { font-family: 'Inter', -apple-system, sans-serif; margin: 0; background-color: #f4f7f9; display: flex; justify-content: center; align-items: center; height: 100vh; }
-        #chat-window { width: 100%; height: 100%; max-width: 500px; background: white; display: flex; flex-direction: column; box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; }
-        #header { background: #0056b3; color: white; padding: 15px; text-align: center; font-weight: bold; font-size: 1.1em; }
-        #messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        .msg { padding: 10px 14px; border-radius: 15px; max-width: 85%; line-height: 1.4; font-size: 0.95em; }
-        .user { align-self: flex-end; background: #0056b3; color: white; border-bottom-right-radius: 2px; }
-        .bot { align-self: flex-start; background: #e9ecef; color: #333; border-bottom-left-radius: 2px; }
-        #input-area { padding: 15px; border-top: 1px solid #eee; display: flex; gap: 10px; }
-        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; outline: none; }
-        button { background: #0056b3; color: white; border: none; padding: 8px 18px; border-radius: 20px; cursor: pointer; transition: 0.2s; }
-        button:hover { background: #004494; }
-        .loading { font-style: italic; color: #888; font-size: 0.8em; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        #chat-container { width: 400px; height: 500px; background: white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; }
+        #header { background: #0056b3; color: white; padding: 15px; text-align: center; font-weight: bold; }
+        #messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .message { padding: 10px; border-radius: 10px; max-width: 80%; font-size: 14px; line-height: 1.4; }
+        .user { align-self: flex-end; background: #0056b3; color: white; }
+        .bot { align-self: flex-start; background: #e4e6eb; color: black; }
+        #input-area { padding: 10px; display: flex; border-top: 1px solid #ddd; }
+        #user-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 20px; outline: none; }
+        #send-btn { margin-left: 10px; background: #0056b3; color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
-
-<div id="chat-window">
-    <div id="header">AI Sprievodca Ostrovského 1</div>
-    <div id="messages">
-        <div class="msg bot">Ahoj! Som tvoj digitálny sprievodca školou. Čo by si chcel vedieť o štúdiu u nás?</div>
+    <div id="chat-container">
+        <div id="header">SOŠ IT Ostrovského - AI Sprievodca</div>
+        <div id="messages"></div>
+        <div id="input-area">
+            <input type="text" id="user-input" placeholder="Napíšte otázku...">
+            <button id="send-btn">Odoslať</button>
+        </div>
     </div>
-    <div id="input-area">
-        <input type="text" id="user-input" placeholder="Spýtaj sa niečo..." onkeypress="if(event.key==='Enter') sendMessage()">
-        <button onclick="sendMessage()">Poslať</button>
-    </div>
-</div>
 
-<script>
-    async function sendMessage() {
-        const input = document.getElementById('user-input');
-        const text = input.value.trim();
-        if (!text) return;
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
 
-        appendMessage(text, 'user');
-        input.value = '';
-
-        const loadingDiv = document.createElement('div');
-        loadingDiv.className = 'msg bot loading';
-        loadingDiv.innerText = 'AI premýšľa...';
-        loadingDiv.id = 'temp-loading';
-        document.getElementById('messages').appendChild(loadingDiv);
-
-        try {
-            const response = await fetch('/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text })
-            });
-            const data = await response.json();
-            document.getElementById('temp-loading').remove();
-            appendMessage(data.response, 'bot');
-        } catch (error) {
-            document.getElementById('temp-loading').remove();
-            appendMessage("Prepáč, nastala chyba pri spojení so serverom.", 'bot');
+        function addMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = `message ${sender}`;
+            div.innerText = text;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
-    }
 
-    function appendMessage(text, side) {
-        const container = document.getElementById('messages');
-        const div = document.createElement('div');
-        div.className = `msg ${side}`;
-        div.innerText = text;
-        container.appendChild(div);
-        container.scrollTop = container.scrollHeight;
-    }
-</script>
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+
+            addMessage(text, 'user');
+            userInput.value = '';
+
+            try {
+                // Relatívna cesta /chat zabezpečí funkčnosť na Renderi
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
+                
+                const data = await response.json();
+                if (data.response) {
+                    addMessage(data.response, 'bot');
+                } else {
+                    addMessage('Prepáč, nastala chyba.', 'bot');
+                }
+            } catch (error) {
+                addMessage('Chyba spojenia so serverom.', 'bot');
+            }
+        }
+
+        sendBtn.addEventListener('click', sendMessage);
+        userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
+
+        addMessage("Dobrý deň! Som AI asistent SOŠ IT. Pýtajte sa na odbory, termíny alebo školu.", 'bot');
+    </script>
 </body>
 </html>
