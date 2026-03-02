@@ -6,21 +6,23 @@ import google.generativeai as genai
 app = Flask(__name__, template_folder='templates')
 CORS(app)
 
-# Tvoj API Kľúč
+# Konfigurácia API
 API_KEY = "AIzaSyCfwYxGd5V6AmMw4U58qkfqV-DryQAwFwo"
 genai.configure(api_key=API_KEY)
 
-# TENTO NÁZOV JE TERAZ SPRÁVNY PRE API v1beta
-model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
+# AKTUALIZÁCIA 2026: Používame Gemini 2.5 Flash
+# Výskum potvrdil, že 'models/' prefix netreba, SDK si ho doplní
+model = genai.GenerativeModel(
+    model_name='gemini-2.5-flash',
+    tools=[{"google_search": {}}] # ZMENA: staré 'google_search_retrieval' už nefunguje
+)
 
 SYSTEM_INSTRUCTION = """
 Si oficiálny AI asistent pre SOŠ IT Ostrovského 1, Košice. 
-Tvojou úlohou je poskytovať presné informácie o škole.
-
-ODBORY: Inteligentné technológie, Informačné a sieťové technológie, Programovanie digitálnych technológií, Správca inteligentných systémov, Grafik digitálnych médií.
-NOTEBOOKY: Potrebná dedikovaná grafika (OpenGL 4.3).
-TERMÍNY: Jarné prázdniny 2.3.-6.3.2026.
-MIESTNOSŤ: Psychológ je v č. 022.
+Informuj o odboroch: Inteligentné technológie, Siete, Programovanie, Grafik, Správca.
+Maturity 2026: SJL je 10.3.2026. Jarné prázdniny: 2.3.-6.3.2026.
+Notebooky: vyžaduje sa dedikovaná GPU (OpenGL 4.3).
+Miestnosť psychológa: 022.
 """
 
 @app.route('/')
@@ -31,21 +33,24 @@ def index():
 def chat():
     try:
         data = request.get_json()
-        msg = data.get("message", "").strip()
-        if not msg:
-            return jsonify({"response": "Prázdna správa."})
+        user_message = data.get("message", "").strip()
+        
+        if not user_message:
+            return jsonify({"response": "Neprijal som správu."})
 
-        # Jednoduché generovanie bez pýtania sa na zoznam modelov
-        response = model.generate_content(f"{SYSTEM_INSTRUCTION}\n\nOtázka: {msg}")
+        # Generovanie s novým modelom
+        prompt = f"{SYSTEM_INSTRUCTION}\n\nPoužívateľ: {user_message}"
+        response = model.generate_content(prompt)
         
         if response and response.text:
             return jsonify({"response": response.text})
         else:
-            return jsonify({"response": "AI neodpovedá, skús to neskôr."})
+            return jsonify({"response": "AI v marci 2026 vyžaduje stabilné pripojenie. Skúste znova."})
     
     except Exception as e:
-        print(f"Chyba: {e}")
-        return jsonify({"response": f"Chyba na serveri: {str(e)}"}), 500
+        # Ak by vypísalo chybu o "Paid Services", znamená to, že treba zapnúť Billing v Google Cloud
+        print(f"DEBUG: {e}")
+        return jsonify({"response": f"Chyba: {str(e)}"}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
