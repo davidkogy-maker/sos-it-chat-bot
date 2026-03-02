@@ -15,7 +15,7 @@ CORS(app)
 
 # Nastav v Render Environment:
 # GEMINI_API_KEY=xxxxxxxxxxxxxxxx
-API_KEY = "AIzaSyCfwYxGd5V6AmMw4U58qkfqV-DryQAwFwo"
+API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Model môžeš zmeniť cez ENV premennú GEMINI_MODEL
 # Odporúčané (marec 2026):
