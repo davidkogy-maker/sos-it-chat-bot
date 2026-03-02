@@ -10,19 +10,19 @@ CORS(app)
 API_KEY = "AIzaSyCfwYxGd5V6AmMw4U58qkfqV-DryQAwFwo"
 genai.configure(api_key=API_KEY)
 
-# AKTUALIZÁCIA 2026: Používame Gemini 2.5 Flash
-# Výskum potvrdil, že 'models/' prefix netreba, SDK si ho doplní
-model = genai.GenerativeModel(
-    model_name='gemini-2.5-flash',
-    tools=[{"google_search": {}}] # ZMENA: staré 'google_search_retrieval' už nefunguje
-)
+# AKTUALIZÁCIA: Skúsime univerzálny alias modelu bez problematických nástrojov
+# Vymazal som sekciu 'tools', aby aplikácia nepadala na neznámych poliach
+model = genai.GenerativeModel(model_name='gemini-1.5-flash')
 
 SYSTEM_INSTRUCTION = """
 Si oficiálny AI asistent pre SOŠ IT Ostrovského 1, Košice. 
-Informuj o odboroch: Inteligentné technológie, Siete, Programovanie, Grafik, Správca.
-Maturity 2026: SJL je 10.3.2026. Jarné prázdniny: 2.3.-6.3.2026.
-Notebooky: vyžaduje sa dedikovaná GPU (OpenGL 4.3).
-Miestnosť psychológa: 022.
+Tvojou úlohou je poskytovať presné informácie o škole.
+
+ODBORY: Inteligentné technológie, Siete, Programovanie, Grafik, Správca.
+MATURITY 2026: SJL je 10.3.2026. JARNÉ PRÁZDNINY: 2.3.-6.3.2026.
+NOTEBOOKY: Vyžaduje sa dedikovaná GPU (OpenGL 4.3).
+MIESTNOSŤ PSYCHOLÓGA: 022.
+Web: https://ostrov.edupage.org/
 """
 
 @app.route('/')
@@ -36,19 +36,18 @@ def chat():
         user_message = data.get("message", "").strip()
         
         if not user_message:
-            return jsonify({"response": "Neprijal som správu."})
+            return jsonify({"response": "Neprijal som žiadnu správu."})
 
-        # Generovanie s novým modelom
+        # Generovanie odpovede
         prompt = f"{SYSTEM_INSTRUCTION}\n\nPoužívateľ: {user_message}"
         response = model.generate_content(prompt)
         
         if response and response.text:
             return jsonify({"response": response.text})
         else:
-            return jsonify({"response": "AI v marci 2026 vyžaduje stabilné pripojenie. Skúste znova."})
+            return jsonify({"response": "Prepáč, momentálne neviem odpovedať."})
     
     except Exception as e:
-        # Ak by vypísalo chybu o "Paid Services", znamená to, že treba zapnúť Billing v Google Cloud
         print(f"DEBUG: {e}")
         return jsonify({"response": f"Chyba: {str(e)}"}), 500
 
