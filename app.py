@@ -6,12 +6,18 @@ import google.generativeai as genai
 app = Flask(__name__, template_folder='templates')
 CORS(app)
 
-# Tvoj API Kľúč
+# Konfigurácia API
 API_KEY = "AIzaSyCfwYxGd5V6AmMw4U58qkfqV-DryQAwFwo"
 genai.configure(api_key=API_KEY)
 
-# OPRAVA: Používame názov modelu, ktorý je 100% podporovaný
-model = genai.GenerativeModel('gemini-pro') 
+# Dynamický výber modelu (nájde prvý funkčný model v tvojom regióne)
+def get_model():
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            return genai.GenerativeModel(m.name)
+    return genai.GenerativeModel('gemini-1.5-flash') # Záloha
+
+model = get_model()
 
 SYSTEM_INSTRUCTION = """
 Si oficiálny AI asistent pre SOŠ IT Ostrovského 1, Košice. 
@@ -23,22 +29,17 @@ KONTAKTNÉ ÚDAJE:
 - Riaditeľka: Ing. Elena Tibenská.
 
 PODROBNÉ ODBORY (2026/2027):
-1. 2559 M Inteligentné technológie: Zameranie na AI, IoT, robotiku a kyberbezpečnosť.
-2. 2561 M Informačné a sieťové technológie: Hardvér, správa sietí, programovanie v Jave.
-3. 2573 M Programovanie digitálnych technológií: Vývoj hier, mobilné aplikácie, VR/AR.
-4. 2571 K Správca inteligentných a digitálnych systémov: Praktický odbor, servis, senzory.
-5. 3447 K Grafik digitálnych médií: Práca s Adobe balíkom, digitálna fotografia a weby.
+1. 2559 M Inteligentné technológie: AI, IoT, robotika, kyberbezpečnosť.
+2. 2561 M Informačné a sieťové technológie: Siete, hardvér, Java.
+3. 2573 M Programovanie digitálnych technológií: Vývoj hier, VR/AR, mobilné aplikácie.
+4. 2571 K Správca inteligentných a digitálnych systémov: Praktický odbor, senzory, servis.
+5. 3447 K Grafik digitálnych médií: Adobe balík, weby, fotografia.
 
-ŠPECIFICKÉ INFORMÁCIE Z MANUÁLU:
-- Notebooky: Každý žiak potrebuje vlastný notebook s Windows 10/11. Kľúčová je dedikovaná grafická karta (GPU) s podporou OpenGL 4.3 a vyššou.
-- Termíny 2026: Jarné prázdniny pre Košický kraj sú od 2.3. do 6.3.2026. Maturita zo SJL je 10.3.2026.
-- Psychológ: Školský psychológ sa nachádza v miestnosti č. 022.
-- Internát a strava: Škola má vlastný školský internát a jedáleň priamo v areáli.
-
-KOMUNIKAČNÉ PRAVIDLÁ:
-- Odpovedaj profesionálne, ale priateľsky.
-- Ak nepoznáš konkrétnu odpoveď, napíš "Túto informáciu nemám špecifikovanú v manuáli" a pridaj odkaz na https://ostrov.edupage.org/.
-- Dodržuj prísne GDPR.
+DÔLEŽITÉ DETAILY:
+- Notebooky: Potrebná dedikovaná GPU (OpenGL 4.3 a vyššie).
+- Termíny: Jarné prázdniny (Košice) sú 2.3.-6.3.2026. Maturita SJL 10.3.2026.
+- Miestnosti: Psychológ je v miestnosti č. 022.
+- Odkazuj na: https://ostrov.edupage.org/
 """
 
 @app.route('/')
@@ -49,23 +50,23 @@ def index():
 def chat():
     try:
         data = request.get_json()
-        user_message = data.get("message", "")
+        user_message = data.get("message", "").strip()
         
         if not user_message:
-            return jsonify({"response": "Neprijal som žiadnu správu."})
+            return jsonify({"response": "Neprijal som správu."})
 
-        # OPRAVA: Jednoduchšie volanie modelu pre lepšiu kompatibilitu
-        prompt = f"{SYSTEM_INSTRUCTION}\n\nPoužívateľ: {user_message}"
+        # Generovanie odpovede s tvojím manuálom
+        prompt = f"{SYSTEM_INSTRUCTION}\n\nPoužívateľ sa pýta: {user_message}"
         response = model.generate_content(prompt)
         
         if response and response.text:
             return jsonify({"response": response.text})
         else:
-            return jsonify({"response": "Prepáč, Gemini vygeneroval prázdnu odpoveď."})
+            return jsonify({"response": "AI momentálne neodpovedá, skúste to o chvíľu."})
     
     except Exception as e:
-        print(f"Chyba: {e}")
-        return jsonify({"response": f"Chyba na serveri: {str(e)}"}), 500
+        print(f"DEBUG CHYBA: {e}")
+        return jsonify({"response": f"Chyba: {str(e)}"}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
