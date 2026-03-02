@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Asistent SOŠ IT</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        #chat-container { width: 400px; height: 500px; background: white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; }
+        body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        #chat-container { width: 90%; max-width: 400px; height: 500px; background: white; border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; }
         #header { background: #0056b3; color: white; padding: 15px; text-align: center; font-weight: bold; }
         #messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-        .message { padding: 10px; border-radius: 10px; max-width: 80%; font-size: 14px; line-height: 1.4; }
+        .message { padding: 10px; border-radius: 10px; max-width: 85%; font-size: 14px; }
         .user { align-self: flex-end; background: #0056b3; color: white; }
         .bot { align-self: flex-start; background: #e4e6eb; color: black; }
         #input-area { padding: 10px; display: flex; border-top: 1px solid #ddd; }
-        #user-input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 20px; outline: none; }
-        #send-btn { margin-left: 10px; background: #0056b3; color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; }
+        #user-input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 20px; outline: none; }
+        #send-btn { margin-left: 10px; background: #0056b3; color: white; border: none; padding: 10px 15px; border-radius: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -48,7 +48,6 @@
             userInput.value = '';
 
             try {
-                // Relatívna cesta /chat zabezpečí funkčnosť na Renderi
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -56,20 +55,21 @@
                 });
                 
                 const data = await response.json();
-                if (data.response) {
+                // Tu je oprava: kontrolujeme data.response
+                if (data && data.response) {
                     addMessage(data.response, 'bot');
                 } else {
-                    addMessage('Prepáč, nastala chyba.', 'bot');
+                    addMessage('Server vrátil neplatné dáta.', 'bot');
                 }
             } catch (error) {
-                addMessage('Chyba spojenia so serverom.', 'bot');
+                addMessage('Chyba pripojenia. Skúste to znova.', 'bot');
             }
         }
 
         sendBtn.addEventListener('click', sendMessage);
         userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
 
-        addMessage("Dobrý deň! Som AI asistent SOŠ IT. Pýtajte sa na odbory, termíny alebo školu.", 'bot');
+        addMessage("Dobrý deň! Som AI asistent SOŠ IT. Pýtajte sa na odbory alebo školu.", 'bot');
     </script>
 </body>
 </html>
