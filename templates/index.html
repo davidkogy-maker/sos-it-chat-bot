@@ -34,11 +34,10 @@
   const inputEl = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
 
-  // ✅ držíme históriu kvôli kontextu
+  // história pre kontext
   const history = [];
 
-  // úvodná správa
-  appendMessage("Dobrý deň! Som AI asistent SOŠ IT. Pýtajte sa na odbory alebo školu.", "bot");
+  appendMessage("Som AI sprievodca SOŠ IT. Spýtaj sa ma na odbory alebo školu 🙂", "bot");
 
   function escapeHtml(str) {
     return str
@@ -49,20 +48,10 @@
       .replaceAll("'", "&#039;");
   }
 
-  // veľmi jednoduchý “markdown”:
-  // **bold** + nové riadky -> <br>
   function formatMessage(text) {
     let t = escapeHtml(text);
-
-    // **bold**
-    t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-
-    // odrážky: riadky začínajúce "- " alebo "• "
-    t = t.replace(/(?:^|\n)([-•])\s+/g, "<br>• ");
-
-    // nové riadky
+    t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>"); // **bold**
     t = t.replaceAll("\n", "<br>");
-
     return t;
   }
 
@@ -72,6 +61,10 @@
     div.innerHTML = formatMessage(text);
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function sleep(ms) {
+    return new Promise(res => setTimeout(res, ms));
   }
 
   async function sendMessage() {
@@ -91,30 +84,26 @@
     messagesEl.appendChild(loadingDiv);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    // ✅ timeout aby to “neviselo”
+    // timeout
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60000); // 60s
+    const timeout = setTimeout(() => controller.abort(), 60000);
 
     try {
       const response = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({
-          message: text,
-          history: history  // ✅ kontext posielame na server
-        })
+        body: JSON.stringify({ message: text, history })
       });
 
       clearTimeout(timeout);
       document.getElementById('temp-loading')?.remove();
 
-      // ak server vráti HTML/502, response.json() spadne
       let data;
       try {
         data = await response.json();
       } catch {
-        appendMessage("Chyba servera (neplatná odpoveď). Skúste to znova.", "bot");
+        appendMessage("Server je momentálne vyťažený. Skúste to prosím znova.", "bot");
         return;
       }
 
@@ -124,13 +113,14 @@
 
     } catch (error) {
       document.getElementById('temp-loading')?.remove();
-
       if (error.name === "AbortError") {
-        appendMessage("Odpoveď trvala príliš dlho (timeout). Skúste to znova.", "bot");
+        appendMessage("Odpoveď trvala príliš dlho. Skúste to prosím znova.", "bot");
       } else {
-        appendMessage("Chyba pripojenia. Skúste to znova.", "bot");
+        appendMessage("Chyba pripojenia. Skúste to prosím znova.", "bot");
       }
     } finally {
+      // jemný client cooldown, aby sa neklikalo 20x za sebou
+      await sleep(2000);
       sendBtn.disabled = false;
       inputEl.focus();
     }
