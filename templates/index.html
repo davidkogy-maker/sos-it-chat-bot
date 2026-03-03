@@ -34,10 +34,10 @@
   const inputEl = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
 
-  // história pre kontext
+  // ✅ história pre kontext
   const history = [];
 
-  appendMessage("Som AI sprievodca SOŠ IT. Spýtaj sa ma na odbory alebo školu 🙂", "bot");
+  appendMessage("Som AI sprievodca SOŠ IT. Spýtaj sa ma na odbory, prijímačky alebo školu 🙂", "bot");
 
   function escapeHtml(str) {
     return str
@@ -48,10 +48,11 @@
       .replaceAll("'", "&#039;");
   }
 
+  // jednoduchý markdown: **bold** + nové riadky
   function formatMessage(text) {
     let t = escapeHtml(text);
     t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>"); // **bold**
-    t = t.replaceAll("\n", "<br>");
+    t = t.replaceAll("\n", "<br>"); // newline
     return t;
   }
 
@@ -61,10 +62,6 @@
     div.innerHTML = formatMessage(text);
     messagesEl.appendChild(div);
     messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function sleep(ms) {
-    return new Promise(res => setTimeout(res, ms));
   }
 
   async function sendMessage() {
@@ -84,7 +81,7 @@
     messagesEl.appendChild(loadingDiv);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    // timeout
+    // ✅ timeout
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
 
@@ -103,7 +100,7 @@
       try {
         data = await response.json();
       } catch {
-        appendMessage("Server je momentálne vyťažený. Skúste to prosím znova.", "bot");
+        appendMessage("Chyba servera (neplatná odpoveď). Skúste to znova.", "bot");
         return;
       }
 
@@ -114,13 +111,11 @@
     } catch (error) {
       document.getElementById('temp-loading')?.remove();
       if (error.name === "AbortError") {
-        appendMessage("Odpoveď trvala príliš dlho. Skúste to prosím znova.", "bot");
+        appendMessage("Odpoveď trvala príliš dlho (timeout). Skúste to znova.", "bot");
       } else {
-        appendMessage("Chyba pripojenia. Skúste to prosím znova.", "bot");
+        appendMessage("Chyba pripojenia. Skúste to znova.", "bot");
       }
     } finally {
-      // jemný client cooldown, aby sa neklikalo 20x za sebou
-      await sleep(2000);
       sendBtn.disabled = false;
       inputEl.focus();
     }
