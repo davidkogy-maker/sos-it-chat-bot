@@ -34,10 +34,10 @@
   const inputEl = document.getElementById('user-input');
   const sendBtn = document.getElementById('send-btn');
 
-  // ✅ história pre kontext
+  // História pre kontext
   const history = [];
 
-  appendMessage("Som AI sprievodca SOŠ IT. Spýtaj sa ma na odbory, prijímačky alebo školu 🙂", "bot");
+  appendMessage("Som AI sprievodca SOŠ IT. Spýtaj sa ma na odbory, prijímačky alebo informácie o škole 🙂", "bot");
 
   function escapeHtml(str) {
     return str
@@ -48,11 +48,11 @@
       .replaceAll("'", "&#039;");
   }
 
-  // jednoduchý markdown: **bold** + nové riadky
+  // **bold** + nové riadky
   function formatMessage(text) {
     let t = escapeHtml(text);
-    t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>"); // **bold**
-    t = t.replaceAll("\n", "<br>"); // newline
+    t = t.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    t = t.replaceAll("\n", "<br>");
     return t;
   }
 
@@ -81,7 +81,6 @@
     messagesEl.appendChild(loadingDiv);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    // ✅ timeout
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 60000);
 
@@ -100,7 +99,7 @@
       try {
         data = await response.json();
       } catch {
-        appendMessage("Chyba servera (neplatná odpoveď). Skúste to znova.", "bot");
+        appendMessage("Server je momentálne vyťažený. Skús to prosím znova.", "bot");
         return;
       }
 
@@ -111,9 +110,9 @@
     } catch (error) {
       document.getElementById('temp-loading')?.remove();
       if (error.name === "AbortError") {
-        appendMessage("Odpoveď trvala príliš dlho (timeout). Skúste to znova.", "bot");
+        appendMessage("Odpoveď trvala príliš dlho. Skús to prosím znova.", "bot");
       } else {
-        appendMessage("Chyba pripojenia. Skúste to znova.", "bot");
+        appendMessage("Chyba pripojenia. Skús to prosím znova.", "bot");
       }
     } finally {
       sendBtn.disabled = false;
