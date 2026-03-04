@@ -2,267 +2,300 @@
 <html lang="sk">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SOŠ IT Ostrovského – AI Sprievodca</title>
+
   <style>
     :root{
-      --blue:#0b5bd3;
-      --blue2:#0a54c7;
-      --bg:#ffffff;
-      --panel:#f3f4f6;
-      --bubble:#e9edf3;
-      --text:#0f172a;
-      --muted:#64748b;
-      --radius:22px;
-      --shadow:0 12px 30px rgba(0,0,0,.12);
-      --maxW: 980px; /* ak chceš aby na PC nebolo extrémne široké */
+      --bg: rgba(255,255,255,0.92);
+      --panel: #ffffff;
+      --header: #0b5bd3;
+      --text: #111827;
+      --muted: #6b7280;
+      --bubble-ai: #f3f4f6;
+      --bubble-user: #0b5bd3;
+      --border: rgba(0,0,0,0.08);
+      --shadow: 0 10px 30px rgba(0,0,0,0.12);
+      --focus: 0 0 0 3px rgba(11,91,211,0.20);
     }
 
-    /* FULLSCREEN voči rodičovi (iframe / container v 3DVista) */
+    /* Dôležité pre 3DVista/webframe: nech je stránka NA CELOM priestore */
     html, body {
-      width:100%;
-      height:100%;
-      margin:0;
-      padding:0;
-      background: transparent; /* nech si to rieši 3DVista container */
-      overflow:hidden;
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      background: transparent; /* nech sa nebijeme s pozadím 3D */
+      overflow: hidden; /* scroll nech je len vo vnútri chat okna */
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      color:var(--text);
+      color: var(--text);
     }
 
-    /* Root wrapper vždy 100% */
-    #app{
-      width:100%;
-      height:100%;
-      display:flex;
-      align-items:stretch;
-      justify-content:center;
+    /* Root kontajner */
+    .app {
+      height: 100%;
+      width: 100%;
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+      background: transparent;
     }
 
-    /* Shell vyplní celú plochu, ale vie mať max šírku */
-    .shell{
-      width:100%;
-      height:100%;
-      max-width: var(--maxW);
-      display:flex;
-      padding: 0; /* nech je to “edge-to-edge” v containery */
-      box-sizing:border-box;
-    }
-
-    /* Karta chatu vyplní celý shell */
-    .chat{
-      width:100%;
-      height:100%;
-      display:flex;
-      flex-direction:column;
-      background: rgba(255,255,255,.92);
-      backdrop-filter: blur(6px);
-      border-radius: var(--radius);
+    /* Chat shell je “na celé” – žiadny max-width */
+    .chat-shell {
+      height: 100%;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      border: 1px solid var(--border);
       box-shadow: var(--shadow);
-      overflow:hidden;
+
+      /* “kockované” */
+      border-radius: 0;
+      overflow: hidden;
     }
 
     /* Header */
-    .header{
+    .chat-header {
       flex: 0 0 auto;
-      background: linear-gradient(180deg, var(--blue), var(--blue2));
-      color:#fff;
-      font-weight:700;
-      text-align:center;
-      padding: 16px 14px;
-      letter-spacing:.2px;
-      font-size: 16px;
+      background: var(--header);
+      color: white;
+      font-weight: 700;
+      text-align: center;
+      padding: 14px 12px;
+      letter-spacing: 0.2px;
+      user-select: none;
     }
 
-    /* Messages area = zvyšok priestoru */
-    .messages{
+    /* Obsah */
+    .chat-body {
       flex: 1 1 auto;
-      min-height:0; /* dôležité aby scroll fungoval v flex */
-      padding: 16px;
-      overflow:auto;
-      background: rgba(243,244,246,.75);
+      min-height: 0; /* extrémne dôležité pre scroll vo flexe */
+      display: flex;
+      flex-direction: column;
+      padding: 14px;
+      gap: 12px;
     }
 
-    .row{
-      display:flex;
+    /* Správy scrollujú samé */
+    .messages {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow: auto;
+      padding: 8px;
+      background: rgba(255,255,255,0.55);
+      border: 1px solid var(--border);
+
+      /* “kockované” */
+      border-radius: 0;
+    }
+
+    .msg {
+      display: flex;
       margin: 10px 0;
     }
-    .row.user{ justify-content:flex-end; }
-    .row.bot{ justify-content:flex-start; }
 
-    .bubble{
-      max-width: 88%;
+    .msg.ai { justify-content: flex-start; }
+    .msg.user { justify-content: flex-end; }
+
+    .bubble {
+      max-width: min(820px, 92%);
       padding: 12px 14px;
-      border-radius: 16px;
       line-height: 1.35;
       font-size: 15px;
+      border: 1px solid var(--border);
       white-space: pre-wrap;
-      word-wrap: break-word;
-      box-shadow: 0 6px 18px rgba(0,0,0,.06);
+      word-break: break-word;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+
+      /* bubliny môžu byť jemne zaoblené, ale ak chceš úplne kocky, daj 0 */
+      border-radius: 12px;
     }
-    .row.user .bubble{
-      background: var(--blue);
-      color:#fff;
-      border-top-right-radius: 10px;
-    }
-    .row.bot .bubble{
-      background: #ffffff;
+
+    .msg.ai .bubble {
+      background: var(--bubble-ai);
       color: var(--text);
-      border-top-left-radius: 10px;
-      border: 1px solid rgba(15,23,42,.06);
     }
 
-    .hint{
-      color: var(--muted);
-      font-size: 12px;
-      margin-top: 6px;
+    .msg.user .bubble {
+      background: var(--bubble-user);
+      color: white;
+      border-color: rgba(255,255,255,0.15);
     }
 
-    /* Input bar */
-    .composer{
+    /* Spodný input bar */
+    .composer {
       flex: 0 0 auto;
-      display:flex;
-      gap: 12px;
-      padding: 14px;
-      background: rgba(255,255,255,.9);
-      border-top: 1px solid rgba(15,23,42,.08);
+      display: flex;
+      gap: 10px;
+      padding: 12px;
+      background: rgba(255,255,255,0.75);
+      border-top: 1px solid var(--border);
     }
 
-    .input{
+    .composer input {
       flex: 1 1 auto;
-      border: 1px solid rgba(15,23,42,.14);
-      border-radius: 999px;
-      padding: 12px 14px;
+      height: 44px;
+      padding: 0 14px;
       font-size: 15px;
-      outline:none;
-      background:#fff;
-    }
-    .input:focus{
-      border-color: rgba(11,91,211,.55);
-      box-shadow: 0 0 0 3px rgba(11,91,211,.15);
+      border: 1px solid var(--border);
+      outline: none;
+
+      /* kocka */
+      border-radius: 0;
+      background: white;
     }
 
-    .btn{
+    .composer input:focus {
+      box-shadow: var(--focus);
+      border-color: rgba(11,91,211,0.45);
+    }
+
+    .composer button {
       flex: 0 0 auto;
-      border: none;
-      border-radius: 999px;
-      padding: 12px 18px;
+      height: 44px;
+      padding: 0 18px;
       font-weight: 700;
       font-size: 15px;
-      cursor:pointer;
-      background: var(--blue);
-      color:#fff;
-    }
-    .btn:disabled{
-      opacity:.65;
-      cursor:not-allowed;
+      color: white;
+      background: var(--header);
+      border: 1px solid rgba(0,0,0,0.05);
+      cursor: pointer;
+
+      /* kocka */
+      border-radius: 0;
     }
 
-    /* Keď je tvoj 3DVista container menší/na výšku: jemne zmenšíme paddingy */
-    @media (max-height: 520px){
-      .header{ padding: 12px 12px; font-size: 15px; }
-      .messages{ padding: 12px; }
-      .composer{ padding: 10px; gap: 10px; }
-      .input{ padding: 10px 12px; }
-      .btn{ padding: 10px 14px; }
+    .composer button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
     }
 
-    /* Ak chceš aby karta bola úplne “edge-to-edge” bez radiusu v malom containery */
-    @media (max-width: 520px){
-      .chat{ border-radius: 18px; }
-      .bubble{ max-width: 92%; }
+    .hint {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 0 2px 2px 2px;
     }
+
+    /* Keď je webframe veľmi úzky */
+    @media (max-width: 420px){
+      .bubble { font-size: 14px; }
+      .chat-header { padding: 12px 10px; }
+      .composer { padding: 10px; }
+    }
+
+    /* Ak chceš úplne “kockové” aj bubliny, odkomentuj:
+    .bubble { border-radius: 0; }
+    */
   </style>
 </head>
 
 <body>
-  <div id="app">
-    <div class="shell">
-      <div class="chat" role="application" aria-label="AI chat">
-        <div class="header">SOŠ IT Ostrovského – AI Sprievodca</div>
+  <div class="app">
+    <div class="chat-shell" role="application" aria-label="SOŠ IT chat">
+      <div class="chat-header">SOŠ IT Ostrovského – AI Sprievodca</div>
 
-        <div id="messages" class="messages" aria-live="polite">
-          <div class="row bot">
+      <div class="chat-body">
+        <div class="messages" id="messages" aria-live="polite" aria-relevant="additions">
+          <div class="msg ai">
             <div class="bubble">
-              Som AI sprievodca SOŠ IT. Spýtaj sa ma na odbory, prijímačky alebo informácie o škole 😊
+Som AI sprievodca SOŠ IT. Spýtaj sa ma na odbory, prijímačky alebo informácie o škole 😊
             </div>
           </div>
         </div>
 
-        <form id="composer" class="composer" autocomplete="off">
-          <input id="input" class="input" type="text" placeholder="Napíšte otázku..." />
-          <button id="send" class="btn" type="submit">Odoslať</button>
-        </form>
+        <div class="hint" id="hint"></div>
       </div>
+
+      <form class="composer" id="form" autocomplete="off">
+        <input
+          id="input"
+          type="text"
+          placeholder="Napíšte otázku..."
+          maxlength="800"
+        />
+        <button id="send" type="submit">Odoslať</button>
+      </form>
     </div>
   </div>
 
   <script>
-    const messagesEl = document.getElementById('messages');
-    const formEl = document.getElementById('composer');
-    const inputEl = document.getElementById('input');
-    const sendBtn = document.getElementById('send');
+    const messagesEl = document.getElementById("messages");
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+    const hintEl = document.getElementById("hint");
 
     function addMessage(text, who) {
-      const row = document.createElement('div');
-      row.className = 'row ' + (who === 'user' ? 'user' : 'bot');
+      const row = document.createElement("div");
+      row.className = `msg ${who}`;
 
-      const bubble = document.createElement('div');
-      bubble.className = 'bubble';
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
       bubble.textContent = text;
 
       row.appendChild(bubble);
       messagesEl.appendChild(row);
 
-      // scroll dole
+      // scroll dolu
       messagesEl.scrollTop = messagesEl.scrollHeight;
-      return bubble;
     }
 
-    function setBusy(busy) {
-      sendBtn.disabled = busy;
-      inputEl.disabled = busy;
+    function setBusy(isBusy, hintText = "") {
+      sendBtn.disabled = isBusy;
+      input.disabled = isBusy;
+      hintEl.textContent = hintText;
     }
 
-    async function sendMessage(q) {
-      setBusy(true);
-      addMessage(q, 'user');
+    async function sendMessage(text) {
+      // tu vieš upraviť, ak máš iný endpoint
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text })
+      });
 
-      // placeholder odpoveď
-      const placeholder = addMessage('...', 'bot');
-
-      try {
-        const res = await fetch('/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: q })
-        });
-
-        // ak backend vráti 200 aj pri chybe, ošetrujeme aj to
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok || !data || typeof data.reply !== 'string' || !data.reply.trim()) {
-          throw new Error('bad_response');
+      // ak server vráti 429/503, zobrazíme “veľa ľudí” (bez spomínania limitov)
+      if (!res.ok) {
+        let seconds = 12; // default
+        const retryAfter = res.headers.get("Retry-After");
+        if (retryAfter) {
+          const n = parseInt(retryAfter, 10);
+          if (!Number.isNaN(n) && n > 0 && n < 120) seconds = n;
         }
-
-        placeholder.textContent = data.reply;
-      } catch (e) {
-        // “neprezrádzaj API limit” – iba ľudská hláška
-        placeholder.textContent = 'Momentálne je veľa ľudí naraz. Skús to prosím o chvíľu.';
-      } finally {
-        setBusy(false);
-        inputEl.value = '';
-        inputEl.focus();
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        return { reply: `Momentálne je veľa ľudí naraz. Skús to prosím o ${seconds} sekúnd.` };
       }
+
+      const data = await res.json();
+
+      // Uprav podľa toho, čo vracia backend:
+      // napr. data.reply / data.response / data.text ...
+      return { reply: (data.reply ?? data.response ?? data.text ?? "").toString() };
     }
 
-    formEl.addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const q = (inputEl.value || '').trim();
-      if (!q) return;
-      sendMessage(q);
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+
+      addMessage(text, "user");
+      input.value = "";
+
+      setBusy(true, "");
+      try {
+        const { reply } = await sendMessage(text);
+        addMessage(reply || "Prepáč, niečo sa pokazilo. Skús to prosím znova.", "ai");
+      } catch (err) {
+        addMessage("Momentálne je veľa ľudí naraz. Skús to prosím o pár sekúnd.", "ai");
+      } finally {
+        setBusy(false, "");
+        input.focus();
+      }
     });
+
+    // Enter posiela, Shift+Enter nie (keď je input typu text, je to default OK)
+    window.addEventListener("load", () => input.focus());
   </script>
 </body>
 </html>
