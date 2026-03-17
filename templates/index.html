@@ -1,271 +1,134 @@
-<!DOCTYPE html>
-<html lang="sk">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+import os
+import re
+from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
+import google.generativeai as genai
 
-<title>SOŠ IT Ostrovského – AI Sprievodca</title>
+app = Flask(__name__)
+CORS(app)
 
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+# ===== ENV =====
+API_KEY = os.getenv("GEMINI_API_KEY")
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-<style>
-:root{
-  --primary:#03A4E2;
-  --primary-dark:#0289bd;
-  --border:#e6e6e6;
-  --soft:#f4f6f8;
-  --text:#1f2a37;
-}
+if API_KEY:
+    genai.configure(api_key=API_KEY)
 
-*{
-  box-sizing:border-box;
-  margin:0;
-  padding:0;
-}
+# ===== SYSTEM PROMPT (len essentials + anti-MHD halucinácie) =====
+SYSTEM_INSTRUCTION = """
+Si AI sprievodca pre SOŠ IT Ostrovského 1, Košice.
+Odpovedaj v slovenčine, priateľsky a užitočne. Keď je to vhodné, použi odrážky.
 
-html,body{
-  height:100%;
-  width:100%;
-  font-family:Arial,Helvetica,sans-serif;
-  background:transparent;
-}
+GDPR:
+- Neposkytuj osobné údaje o žiakoch.
+- Pri interných veciach (rozvrh, suplovanie) odporuč EduPage alebo sekretariát.
 
-.page{
-  width:100vw;
-  height:100vh;
-}
+DOPRAVA (MHD):
+- Nikdy nevymýšľaj čísla liniek, názvy zastávok ani časy.
+- Pri otázkach na cestu odporuč overiť aktuálne spoje v cestovnom poriadku (imhd.sk / DPMK).
 
-.chat{
-  width:100vw;
-  height:100vh;
-  display:flex;
-  flex-direction:column;
-  background:#fff;
-}
+Základné info:
+- Adresa: Ostrovského 1, Košice
+- Email: skola@ostrovskeho.sk
+- Tel.: +421 55 643 68 91
 
-.header{
-  position:sticky;
-  top:0;
-  background:#03A4E2;
-  color:#fff;
-  font-weight:bold;
-  text-align:center;
-  padding:18px;
-  font-size:18px;
-  z-index:10;
-}
+Študijné odbory:
+1) Inteligentné technológie
+2) Informačné a sieťové technológie
+3) Programovanie digitálnych technológií
+4) Správca inteligentných a digitálnych systémov
+5) Grafik digitálnych médií
+""".strip()
 
-.messages{
-  flex:1;
-  overflow-y:auto;
-  padding:20px;
-  background:#ffffff;
-}
 
-.row{
-  display:flex;
-  margin:10px 0;
-}
+def convert_history(history):
+    """Frontend posiela: [{"role":"user|model","text":"..."}]"""
+    out = []
+    if not isinstance(history, list):
+        return out
 
-.row.user{
-  justify-content:flex-end;
-}
+    # necháme kontext, aby odpovede boli dobré
+    history = history[-12:]
 
-.row.bot{
-  justify-content:flex-start;
-}
+    for item in history:
+        role = item.get("role")
+        text = (item.get("text") or "").strip()
+        if not text:
+            continue
+        if role == "user":
+            out.append({"role": "user", "parts": [text]})
+        else:
+            out.append({"role": "model", "parts": [text]})
+    return out
 
-.bubble{
-  max-width:80%;
-  padding:12px 16px;
-  border-radius:12px;
-  border:1px solid var(--border);
-  background:var(--soft);
-  font-size:15px;
-  line-height:1.4;
-  color:var(--text);
-}
 
-.row.user .bubble{
-  background:#03A4E2;
-  color:white;
-  border:none;
-}
+def _is_busy_error(msg: str) -> bool:
+    # Gemini quota / rate limit typicky vyhadzuje ResourceExhausted / Quota exceeded / 429
+    return ("ResourceExhausted" in msg) or ("Quota exceeded" in msg) or ("429" in msg)
 
-.bubble p{
-  margin-bottom:10px;
-}
 
-.bubble ul{
-  margin-left:20px;
-}
+def _retry_seconds(msg: str):
+    m = re.search(r"Please retry in ([0-9.]+)s", msg)
+    if not m:
+        return None
+    sec = int(float(m.group(1)))
+    return max(5, min(sec, 180))
 
-.bubble strong{
-  font-weight:bold;
-}
 
-.composer{
-  display:flex;
-  gap:10px;
-  padding:16px;
-  border-top:1px solid var(--border);
-  background:#fff;
-}
+@app.route("/")
+def index():
+    return render_template("index.html")
 
-.composer input{
-  flex:1;
-  padding:12px;
-  font-size:16px;
-  border:1px solid #ccc;
-  outline:none;
-}
 
-.composer input:focus{
-  border-color:#03A4E2;
-  box-shadow:0 0 0 2px rgba(3,164,226,0.2);
-}
+@app.route("/favicon.ico")
+def favicon():
+    return ("", 204)
 
-.composer button{
-  background:#03A4E2;
-  color:#fff;
-  border:none;
-  padding:12px 22px;
-  font-weight:bold;
-  cursor:pointer;
-}
 
-.composer button:hover{
-  background:#0289bd;
-}
+@app.route("/chat", methods=["POST"])
+def chat():
+    try:
+        data = request.get_json(silent=True) or {}
+        message = (data.get("message") or "").strip()
+        history = data.get("history", [])
 
-.typing{
-  display:flex;
-  align-items:center;
-  gap:6px;
-}
+        if not message:
+            return jsonify({"response": "Napíš prosím otázku 🙂"})
 
-.dot{
-  width:7px;
-  height:7px;
-  border-radius:50%;
-  background:#999;
-  animation:blink 1s infinite;
-}
+        if not API_KEY:
+            return jsonify({"response": "Služba je momentálne nedostupná. Skús to prosím neskôr."})
 
-.dot:nth-child(2){animation-delay:.2s}
-.dot:nth-child(3){animation-delay:.4s}
+        model = genai.GenerativeModel(
+            model_name=MODEL_NAME,
+            system_instruction=SYSTEM_INSTRUCTION,
+            generation_config={
+                "temperature": 0.45,      # nech to odpovedá pekne
+                "max_output_tokens": 900, # nech to nie je príliš krátke
+            },
+        )
 
-@keyframes blink{
-  0%{opacity:.3}
-  50%{opacity:1}
-  100%{opacity:.3}
-}
-</style>
-</head>
+        chat_session = model.start_chat(history=convert_history(history))
+        resp = chat_session.send_message(message)
 
-<body>
+        text = (getattr(resp, "text", "") or "").strip()
+        if not text:
+            text = "Ospravedlňujem sa, odpoveď sa nepodarila vygenerovať."
+        return jsonify({"response": text})
 
-<div class="page">
-  <div class="chat">
-    <div class="header">
-      SOŠ IT Ostrovského – AI Sprievodca
-    </div>
+    except Exception as e:
+        print("CHAT ERROR:", repr(e))
+        msg = str(e)
 
-    <div class="messages" id="messages"></div>
+        # Nenápadná hláška pri vyťažení/limite
+        if _is_busy_error(msg):
+            sec = _retry_seconds(msg)
+            if sec:
+                return jsonify({"response": f"Momentálne je veľa ľudí naraz. Skús to prosím o {sec} sekúnd."})
+            return jsonify({"response": "Momentálne je veľa ľudí naraz. Skús to prosím o chvíľu."})
 
-    <div class="composer">
-      <input id="input" placeholder="Napíšte otázku..." autocomplete="off">
-      <button id="sendBtn">Odoslať</button>
-    </div>
-  </div>
-</div>
+        return jsonify({"response": "Nastala chyba servera. Skús to prosím o chvíľu."})
 
-<script>
-marked.setOptions({
-  breaks:true,
-  gfm:true
-});
 
-function renderMarkdown(text){
-  return DOMPurify.sanitize(marked.parse(text || ""));
-}
-
-const messages = document.getElementById("messages");
-const input = document.getElementById("input");
-const btn = document.getElementById("sendBtn");
-
-function scrollBottom(){
-  messages.scrollTop = messages.scrollHeight;
-}
-
-function addMessage(role, text, isTyping = false){
-  const row = document.createElement("div");
-  row.className = "row " + role;
-
-  const bubble = document.createElement("div");
-  bubble.className = "bubble";
-
-  if(isTyping){
-    bubble.innerHTML = `
-      <div class="typing">
-        AI píše
-        <div class="dot"></div>
-        <div class="dot"></div>
-        <div class="dot"></div>
-      </div>
-    `;
-  } else {
-    bubble.innerHTML = renderMarkdown(text);
-  }
-
-  row.appendChild(bubble);
-  messages.appendChild(row);
-  scrollBottom();
-  return bubble;
-}
-
-addMessage("bot","Som AI sprievodca SOŠ IT. Spýtaj sa ma na odbory, prijímačky alebo informácie o škole 😊");
-
-async function send(){
-  const text = input.value.trim();
-  if(!text) return;
-
-  addMessage("user", text);
-  input.value = "";
-
-  const typingBubble = addMessage("bot", "", true);
-
-  try{
-    const res = await fetch("/chat", {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ message:text })
-    });
-
-    const data = await res.json();
-    console.log("CHAT RESPONSE:", data);
-
-    typingBubble.innerHTML = renderMarkdown(
-      data.response || "Ospravedlňujem sa, odpoveď sa nepodarila načítať."
-    );
-
-  } catch(e){
-    console.error("CHAT ERROR:", e);
-    typingBubble.innerHTML = renderMarkdown(
-      "Momentálne je veľa ľudí naraz. Skús to prosím o chvíľu."
-    );
-  }
-
-  scrollBottom();
-}
-
-btn.onclick = send;
-
-input.addEventListener("keydown", e => {
-  if(e.key === "Enter") send();
-});
-</script>
-
-</body>
-</html>
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
