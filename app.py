@@ -1,10 +1,5 @@
 import os
 import re
-import html
-from urllib.parse import urlparse
-
-import requests
-from bs4 import BeautifulSoup
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import google.generativeai as genai
@@ -19,29 +14,18 @@ MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
-# ===== SYSTEM PROMPT =====
+# ===== SYSTEM PROMPT (len essentials + anti-MHD halucinácie) =====
 SYSTEM_INSTRUCTION = """
 Si AI sprievodca pre SOŠ IT Ostrovského 1, Košice.
-
-Tvoja úloha:
-- pomáhať s otázkami o škole
-- odpovedať v slovenčine
-- byť priateľský, stručný a užitočný
-- keď je to vhodné, použi odrážky
-
-Dôležité pravidlá:
-- Odpovedaj iba na základe známych a overiteľných informácií.
-- Ak si si nie istý alebo v dostupných zdrojoch nenájdeš odpoveď, povedz to otvorene.
-- Nevymýšľaj si informácie.
-- Pri otázkach mimo školy slušne vysvetli, že si AI sprievodca školy a pomáhaš hlavne s témami o škole.
+Odpovedaj v slovenčine, priateľsky a užitočne. Keď je to vhodné, použi odrážky.
 
 GDPR:
 - Neposkytuj osobné údaje o žiakoch.
-- Pri interných veciach (rozvrh, suplovanie, známky, dochádzka) odporuč EduPage alebo sekretariát.
+- Pri interných veciach (rozvrh, suplovanie) odporuč EduPage alebo sekretariát.
 
 DOPRAVA (MHD):
 - Nikdy nevymýšľaj čísla liniek, názvy zastávok ani časy.
-- Pri otázkach na cestu odporuč overiť aktuálne spoje v cestovnom poriadku.
+- Pri otázkach na cestu odporuč overiť aktuálne spoje v cestovnom poriadku (imhd.sk / DPMK).
 
 Základné info:
 - Adresa: Ostrovského 1, Košice
@@ -56,121 +40,21 @@ Základné info:
 5) Grafik digitálnych médií
 """.strip()
 
-# ===== POVOLENÉ ŠKOLSKÉ ZDROJE =====
-OFFICIAL_SOURCES = [
-    "https://ostrovskeho.sk/index.php?id=2i",
-    "https://ostrov.edupage.org/",
-    "https://ostrov.edupage.org/login/",
-    "https://ostrov.edupage.org/portal/",
-    "https://ostrov.edupage.org/menu/",
-    "https://ostrov.edupage.org/contact/",
-    "https://www.ostrovskeho.sk/dod/",
-]
-
-ALLOWED_DOMAINS = {
-    "ostrovskeho.sk",
-    "www.ostrovskeho.sk",
-    "ostrov.edupage.org",
-}
-
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SOS-IT-chatbot/1.0)"
-}
-
-# ===== RÝCHLE OVERENÉ ODPOVEDE =====
-FAST_ANSWERS = [
-    {
-        "patterns": [r"jed[aá]l", r"obed", r"strav", r"menu", r"jed[aá]lny l[ií]stok"],
-        "answer": (
-            "Jedálny lístok nájdeš na EduPage školy v sekcii Jedálny lístok. "
-            "Ak chceš, môžem ti pomôcť aj s ďalšími informáciami o škole."
-        )
-    },
-    {
-        "patterns": [r"edupage", r"zn[aá]mky", r"doch[aá]dzk", r"rozvrh", r"suplovanie", r"prihl[aá]s"],
-        "answer": (
-            "Na známky, dochádzku, rozvrh, suplovanie a prihlásenie odporúčam EduPage školy. "
-            "Ak chceš, môžem ti poradiť aj s tým, kde to tam nájdeš."
-        )
-    },
-    {
-        "patterns": [r"kontakt", r"email", r"mail", r"telef[oó]n", r"adresa", r"sekretari[aá]t"],
-        "answer": (
-            "Kontakt na školu:\n"
-            "- Adresa: Ostrovského 1, Košice\n"
-            "- Email: skola@ostrovskeho.sk\n"
-            "- Telefón: +421 55 643 68 91"
-        )
-    },
-]
-
-OFFTOPIC_PATTERNS = [
-    r"\bronald[o]?\b",
-    r"\bmessi\b",
-    r"\bfutbal\b",
-    r"\bseahorse\b",
-    r"\bemoji\b",
-    r"\bvtip\b",
-    r"\bmeme\b",
-    r"\bpolitika\b",
-    r"\bprezident\b",
-    r"\bvojna\b",
-    r"\bbitcoin\b",
-    r"\bkrypto\b",
-    r"\bfilm\b",
-    r"\bseri[aá]l\b",
-    r"\bminecraft\b",
-    r"\bfortnite\b",
-]
-
-SCHOOL_PATTERNS = [
-    r"\bškola\b",
-    r"\bskola\b",
-    r"\bsos\b",
-    r"\bsoš\b",
-    r"\bostrovsk",
-    r"\bodbor",
-    r"\bodbory\b",
-    r"\bšt[uú]d",
-    r"\bstud",
-    r"\bprij[ií]ma[cč]",
-    r"\buch[aá]dza[cč]",
-    r"\bkontakt",
-    r"\bemail\b",
-    r"\bmail\b",
-    r"\btelef[oó]n\b",
-    r"\badresa\b",
-    r"\bedupage\b",
-    r"\bjed[aá]l",
-    r"\bstrav",
-    r"\bobed",
-    r"\bintern[aá]t\b",
-    r"\bdoprava\b",
-    r"\bmhd\b",
-    r"\bko[sš]ice\b",
-    r"\bmaturit",
-    r"\bgrafik\b",
-    r"\bprogramovanie\b",
-    r"\bsie[tť]ov",
-    r"\binteligentn",
-]
 
 def convert_history(history):
+    """Frontend posiela: [{"role":"user|model","text":"..."}]"""
     out = []
     if not isinstance(history, list):
         return out
 
-    history = history[-10:]
+    # necháme kontext, aby odpovede boli dobré
+    history = history[-12:]
 
     for item in history:
-        if not isinstance(item, dict):
-            continue
-
         role = item.get("role")
         text = (item.get("text") or "").strip()
         if not text:
             continue
-
         if role == "user":
             out.append({"role": "user", "parts": [text]})
         else:
@@ -178,291 +62,17 @@ def convert_history(history):
     return out
 
 
-def _normalize_text(text: str) -> str:
-    if not text:
-        return ""
-    text = text.lower().strip()
-    text = re.sub(r"\s+", " ", text)
-    return text
-
-
 def _is_busy_error(msg: str) -> bool:
+    # Gemini quota / rate limit typicky vyhadzuje ResourceExhausted / Quota exceeded / 429
     return ("ResourceExhausted" in msg) or ("Quota exceeded" in msg) or ("429" in msg)
 
 
 def _retry_seconds(msg: str):
-    m = re.search(r"Please retry in ([0-9.]+)s", msg or "")
+    m = re.search(r"Please retry in ([0-9.]+)s", msg)
     if not m:
         return None
     sec = int(float(m.group(1)))
     return max(5, min(sec, 180))
-
-
-def _is_offtopic(message: str) -> bool:
-    text = _normalize_text(message)
-    return any(re.search(pattern, text) for pattern in OFFTOPIC_PATTERNS)
-
-
-def _is_school_related(message: str) -> bool:
-    text = _normalize_text(message)
-
-    if _is_offtopic(text):
-        return False
-
-    if any(re.search(pattern, text) for pattern in SCHOOL_PATTERNS):
-        return True
-
-    english_school_patterns = [
-        r"\bschool\b",
-        r"\badmission\b",
-        r"\bstudy\b",
-        r"\blunch\b",
-        r"\bcanteen\b",
-        r"\bmenu\b",
-        r"\bcontact\b",
-        r"\bsubjects\b",
-    ]
-    return any(re.search(pattern, text) for pattern in english_school_patterns)
-
-
-def _offtopic_reply():
-    return (
-        "Som AI sprievodca pre SOŠ IT Ostrovského, takže pomáham hlavne s otázkami o škole, "
-        "odboroch, prijímačkách, EduPage, kontaktoch a štúdiu. "
-        "Skús sa ma prosím opýtať niečo o škole 🙂"
-    )
-
-
-def _fast_answer(message: str):
-    text = _normalize_text(message)
-    for item in FAST_ANSWERS:
-        for pattern in item["patterns"]:
-            if re.search(pattern, text):
-                return item["answer"]
-    return None
-
-
-def _tokenize(text: str):
-    text = _normalize_text(text)
-    words = re.findall(r"[a-zA-Záäčďéíĺľňóôŕšťúýž0-9]+", text)
-    stopwords = {
-        "a", "aj", "ale", "alebo", "ako", "ak", "aby", "do", "je", "na", "o", "od", "po",
-        "sa", "si", "som", "sú", "su", "to", "ten", "tá", "ta", "pre", "pri", "z", "zo",
-        "u", "v", "vo", "k", "ku", "či", "co", "čo", "kde", "ktorý", "ktory", "ktorá",
-        "ktora", "what", "how", "where", "the", "and", "for"
-    }
-    return [w for w in words if len(w) > 2 and w not in stopwords]
-
-
-def _chunk_text(text: str, max_chars: int = 900):
-    paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
-    chunks = []
-    current = ""
-
-    for p in paragraphs:
-        if len(current) + len(p) + 1 <= max_chars:
-            current = f"{current}\n{p}".strip()
-        else:
-            if current:
-                chunks.append(current)
-            current = p
-
-    if current:
-        chunks.append(current)
-
-    return chunks
-
-
-def _clean_html_to_text(raw_html: str) -> str:
-    soup = BeautifulSoup(raw_html, "html.parser")
-
-    for tag in soup(["script", "style", "noscript", "svg"]):
-        tag.decompose()
-
-    text = soup.get_text(separator="\n")
-    text = html.unescape(text)
-    lines = [re.sub(r"\s+", " ", line).strip() for line in text.splitlines()]
-    lines = [line for line in lines if len(line) >= 3]
-    text = "\n".join(lines)
-    text = re.sub(r"\n{2,}", "\n", text).strip()
-    return text
-
-
-def _fetch_page_text(url: str) -> str:
-    try:
-        parsed = urlparse(url)
-        if parsed.netloc not in ALLOWED_DOMAINS:
-            return ""
-
-        response = requests.get(url, headers=HEADERS, timeout=10)
-        response.raise_for_status()
-
-        content_type = response.headers.get("Content-Type", "")
-        if "text/html" not in content_type and "text/plain" not in content_type:
-            return ""
-
-        return _clean_html_to_text(response.text)
-    except Exception:
-        return ""
-
-
-def _choose_source_urls(message: str):
-    text = _normalize_text(message)
-
-    if re.search(r"jed[aá]l|obed|strav|menu", text):
-        return [
-            "https://ostrov.edupage.org/menu/",
-            "https://ostrov.edupage.org/",
-        ]
-
-    if re.search(r"edupage|zn[aá]mky|doch[aá]dzk|rozvrh|suplovanie|prihl[aá]s", text):
-        return [
-            "https://ostrov.edupage.org/portal/",
-            "https://ostrov.edupage.org/login/",
-            "https://ostrov.edupage.org/",
-        ]
-
-    if re.search(r"kontakt|email|mail|telef[oó]n|adresa|sekretari[aá]t", text):
-        return [
-            "https://ostrov.edupage.org/contact/",
-            "https://ostrovskeho.sk/index.php?id=2i",
-        ]
-
-    if re.search(r"prij[ií]ma[cč]|uch[aá]dza[cč]|odbor|št[uú]d|stud|grafik|programovanie|sie[tť]ov|inteligentn", text):
-        return [
-            "https://www.ostrovskeho.sk/dod/",
-            "https://ostrovskeho.sk/index.php?id=2i",
-        ]
-
-    return OFFICIAL_SOURCES
-
-
-def _retrieve_context(question: str):
-    urls = _choose_source_urls(question)
-    q_tokens = set(_tokenize(question))
-    scored_chunks = []
-
-    for url in urls:
-        page_text = _fetch_page_text(url)
-        if not page_text:
-            continue
-
-        chunks = _chunk_text(page_text)
-        for chunk in chunks:
-            c_tokens = set(_tokenize(chunk))
-            overlap = len(q_tokens & c_tokens)
-
-            bonus = 0
-            q = _normalize_text(question)
-            c = _normalize_text(chunk)
-
-            if re.search(r"jed[aá]l|obed|strav|menu", q) and re.search(r"jed[aá]ln|menu|obed", c):
-                bonus += 4
-
-            if re.search(r"kontakt|email|mail|telef[oó]n|adresa", q) and re.search(r"kontakt|email|telef|ostrovsk[eé]ho 1", c):
-                bonus += 4
-
-            if re.search(r"prij[ií]ma[cč]|uch[aá]dza[cč]|odbor|št[uú]d|stud", q) and re.search(r"odbor|štud|stud|prij", c):
-                bonus += 3
-
-            score = overlap + bonus
-            if score > 0:
-                scored_chunks.append((score, url, chunk))
-
-    scored_chunks.sort(key=lambda x: x[0], reverse=True)
-
-    results = []
-    seen = set()
-
-    for score, url, chunk in scored_chunks:
-        key = chunk[:200]
-        if key in seen:
-            continue
-        seen.add(key)
-        results.append((url, chunk))
-        if len(results) >= 5:
-            break
-
-    return results
-
-
-def _build_context_block(retrieved):
-    if not retrieved:
-        return ""
-
-    blocks = []
-    for i, (url, chunk) in enumerate(retrieved, start=1):
-        blocks.append(f"[ZDROJ {i}] {url}\n{chunk}")
-    return "\n\n".join(blocks)
-
-
-def _build_prompt(message: str, context_block: str) -> str:
-    return f"""
-{SYSTEM_INSTRUCTION}
-
-Používateľova otázka:
-{message}
-
-Overený kontext zo školských zdrojov:
-{context_block}
-
-Pokyny:
-- Odpovedaj iba z kontextu vyššie.
-- Ak v kontexte nie je presná odpoveď, povedz to otvorene.
-- Ak ide o navigáciu na EduPage alebo školský web, povedz používateľovi, kde to nájde.
-- Nevymýšľaj si fakty.
-- Odpoveď nech je prirodzená, priateľská a stručná.
-""".strip()
-
-
-def _generate_answer(message: str, history, context_block: str) -> str:
-    model = genai.GenerativeModel(
-        model_name=MODEL_NAME,
-        system_instruction=SYSTEM_INSTRUCTION,
-        generation_config={
-            "temperature": 0.30,
-            "max_output_tokens": 700,
-        },
-    )
-
-    chat_session = model.start_chat(history=convert_history(history))
-    final_message = _build_prompt(message, context_block)
-    resp = chat_session.send_message(final_message)
-
-    text = (getattr(resp, "text", "") or "").strip()
-    if text:
-        return text
-
-    return ""
-
-
-def _fallback_school_reply(message: str) -> str:
-    text = _normalize_text(message)
-
-    if re.search(r"jed[aá]l|obed|strav|menu", text):
-        return (
-            "Jedálny lístok nájdeš na EduPage školy v sekcii Jedálny lístok. "
-            "Ak chceš, môžem ti poradiť aj s ďalšími informáciami o škole."
-        )
-
-    if re.search(r"edupage|zn[aá]mky|doch[aá]dzk|rozvrh|suplovanie|prihl[aá]s", text):
-        return (
-            "Na tieto informácie odporúčam EduPage školy. "
-            "Ak chceš, môžem ti poradiť, kde tam nájdeš konkrétnu sekciu."
-        )
-
-    if re.search(r"kontakt|email|mail|telef[oó]n|adresa", text):
-        return (
-            "Kontakt na školu:\n"
-            "- Adresa: Ostrovského 1, Košice\n"
-            "- Email: skola@ostrovskeho.sk\n"
-            "- Telefón: +421 55 643 68 91"
-        )
-
-    return (
-        "Pomáham s otázkami o SOŠ IT Ostrovského. "
-        "Skús sa ma opýtať na odbory, prijímačky, kontakty, EduPage alebo informácie o škole."
-    )
 
 
 @app.route("/")
@@ -473,15 +83,6 @@ def index():
 @app.route("/favicon.ico")
 def favicon():
     return ("", 204)
-
-
-@app.route("/health")
-def health():
-    return jsonify({
-        "status": "ok",
-        "model": MODEL_NAME,
-        "api_key_configured": bool(API_KEY)
-    })
 
 
 @app.route("/chat", methods=["POST"])
@@ -497,33 +98,28 @@ def chat():
         if not API_KEY:
             return jsonify({"response": "Služba je momentálne nedostupná. Skús to prosím neskôr."})
 
-        if _is_offtopic(message):
-            return jsonify({"response": _offtopic_reply()})
+        model = genai.GenerativeModel(
+            model_name=MODEL_NAME,
+            system_instruction=SYSTEM_INSTRUCTION,
+            generation_config={
+                "temperature": 0.45,      # nech to odpovedá pekne
+                "max_output_tokens": 900, # nech to nie je príliš krátke
+            },
+        )
 
-        if not _is_school_related(message):
-            return jsonify({"response": _offtopic_reply()})
+        chat_session = model.start_chat(history=convert_history(history))
+        resp = chat_session.send_message(message)
 
-        direct = _fast_answer(message)
-        if direct:
-            return jsonify({"response": direct})
-
-        retrieved = _retrieve_context(message)
-        context_block = _build_context_block(retrieved)
-
-        if not context_block:
-            return jsonify({"response": _fallback_school_reply(message)})
-
-        text = _generate_answer(message, history, context_block)
-
+        text = (getattr(resp, "text", "") or "").strip()
         if not text:
-            text = _fallback_school_reply(message)
-
+            text = "Ospravedlňujem sa, odpoveď sa nepodarila vygenerovať."
         return jsonify({"response": text})
 
     except Exception as e:
         print("CHAT ERROR:", repr(e))
         msg = str(e)
 
+        # Nenápadná hláška pri vyťažení/limite
         if _is_busy_error(msg):
             sec = _retry_seconds(msg)
             if sec:
