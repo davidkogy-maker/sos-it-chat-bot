@@ -14,8 +14,8 @@ MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 if API_KEY:
     genai.configure(api_key=API_KEY)
 
-# ===== SYSTEM PROMPT (len essentials + anti-MHD halucinácie) =====
-SYSTEM_INSTRUCTION = SYSTEM_INSTRUCTION = """
+# ===== SYSTEM PROMPT =====
+SYSTEM_INSTRUCTION = """
 Si AI sprievodca pre SOŠ IT Ostrovského 1, Košice.
 
 Tvoja úloha:
@@ -67,12 +67,10 @@ Základné info:
 
 
 def convert_history(history):
-    """Frontend posiela: [{"role":"user|model","text":"..."}]"""
     out = []
     if not isinstance(history, list):
         return out
 
-    # necháme kontext, aby odpovede boli dobré
     history = history[-12:]
 
     for item in history:
@@ -88,7 +86,6 @@ def convert_history(history):
 
 
 def _is_busy_error(msg: str) -> bool:
-    # Gemini quota / rate limit typicky vyhadzuje ResourceExhausted / Quota exceeded / 429
     return ("ResourceExhausted" in msg) or ("Quota exceeded" in msg) or ("429" in msg)
 
 
@@ -123,12 +120,28 @@ def chat():
         if not API_KEY:
             return jsonify({"response": "Služba je momentálne nedostupná. Skús to prosím neskôr."})
 
+        # ===== DAVID GYORI FIX =====
+        text_check = message.lower()
+        if any(x in text_check for x in [
+            "david gyori",
+            "gyori",
+            "kto vytvoril",
+            "autor chatbota",
+            "kto je david"
+        ]):
+            return jsonify({
+                "response": """**Tento AI chatbot vytvoril študent David Györi** ako projekt pre **SOŠ IT Ostrovského**. 🙂
+
+Slúži ako inteligentný sprievodca, ktorý pomáha uchádzačom a študentom získať informácie o škole."""
+            })
+
+        # ===== GEMINI =====
         model = genai.GenerativeModel(
             model_name=MODEL_NAME,
             system_instruction=SYSTEM_INSTRUCTION,
             generation_config={
-                "temperature": 0.45,      # nech to odpovedá pekne
-                "max_output_tokens": 900, # nech to nie je príliš krátke
+                "temperature": 0.45,
+                "max_output_tokens": 900,
             },
         )
 
@@ -138,13 +151,13 @@ def chat():
         text = (getattr(resp, "text", "") or "").strip()
         if not text:
             text = "Ospravedlňujem sa, odpoveď sa nepodarila vygenerovať."
+
         return jsonify({"response": text})
 
     except Exception as e:
         print("CHAT ERROR:", repr(e))
         msg = str(e)
 
-        # Nenápadná hláška pri vyťažení/limite
         if _is_busy_error(msg):
             sec = _retry_seconds(msg)
             if sec:
